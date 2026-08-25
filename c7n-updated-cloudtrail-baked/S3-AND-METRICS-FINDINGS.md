@@ -28,9 +28,9 @@ target account** (500 accounts → 500 buckets)? No.
   scanned*, not the bucket's actual region. Always pin it:
   `-s "s3://<bucket>/<prefix>?region=<bucket-region>"`.
 - Once S3 output is on, `kubectl logs` stops being the audit trail — the
-  full per-resource JSON dump moves to S3. The job's log now only prints a
-  short human-readable CSV summary plus the S3 path, not the raw match
-  data (see the command block in `deploy/cronjob.yaml`).
+  full per-resource JSON dump moves to S3, `kubectl logs` only shows
+  `c7n-org run`'s own `-v` progress output (see the command block in
+  `deploy/cronjob.yaml`).
 
 ## CloudWatch metrics — two routing modes, pick based on IAM appetite
 

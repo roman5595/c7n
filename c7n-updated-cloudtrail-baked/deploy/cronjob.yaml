@@ -74,25 +74,10 @@ spec:
                   # being scanned. Both validated in ../S3-AND-METRICS-FINDINGS.md
                   # - fill in <S3_BUCKET_NAME>/<S3_PREFIX>/<REGION> below
                   # (region must be the bucket's own region).
-                  S3_OUT="s3://<S3_BUCKET_NAME>/<S3_PREFIX>?region=<REGION>"
                   c7n-org run -c /policies/accounts.yml -u /policies/policies.yml \
-                    -s "$S3_OUT" \
+                    -s "s3://<S3_BUCKET_NAME>/<S3_PREFIX>?region=<REGION>" \
                     --metrics-uri "aws://master?region=<REGION>" \
                     -v
-                  rc=$?
-                  echo "===== OUTPUT ====="
-                  echo "Per-run resources/metadata/logs: s3://<S3_BUCKET_NAME>/<S3_PREFIX>/<account-name>/<region>/<policy-name>/YYYY/MM/DD/HH/ (gzip'd JSON)"
-                  echo "Metrics: CloudWatch, namespace CloudMaid, this (hub) account"
-                  echo "===== FINOPS REPORT (ec2, csv) ====="
-                  c7n-org report -c /policies/accounts.yml -u /policies/policies.yml -s "$S3_OUT" \
-                    --resource ec2 --format csv --no-default-fields \
-                    --field "InstanceId=InstanceId" \
-                    --field "Name=tag:Name" \
-                    --field "State=State.Name" \
-                    --field "StoppedSince=tag:FinOpsStoppedDate" \
-                    --field "AmiId=tag:FinOpsAmiId" \
-                    2>/dev/null || echo "report failed (rc=$?) - continuing"
-                  exit $rc
               resources:
                 requests:
                   cpu: 100m

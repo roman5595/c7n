@@ -112,8 +112,8 @@ print('verified-ami-backup' in EC2.filter_registry,
    kubectl create job --from=cronjob/cloud-custodian-ec2-ami -n monitoring manual-test-1
    kubectl logs -n monitoring -l job-name=manual-test-1
    ```
-   The log now only prints a short CSV summary and the S3 path — the full
-   per-resource JSON is in the bucket, not in `kubectl logs`.
+   `kubectl logs` now only shows `c7n-org run`'s own `-v` progress output —
+   the full per-resource JSON is in the S3 bucket, not in `kubectl logs`.
 
 ## Known gaps, not addressed by this repo
 
