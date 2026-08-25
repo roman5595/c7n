@@ -1,0 +1,197 @@
+apiVersion: v1
+data:
+  accounts.yml: |
+    accounts:
+      - name: "pti-corebe-plint-002"
+        account_id: "<ACCOUNT_ID>"
+        role: arn:aws:iam::<ACCOUNT_ID>:role/pti-corebe-plint-002-cloud-custodian-ec2-ami-role
+        regions:
+          - eu-west-1
+          - eu-central-1
+  policies.yml: |
+    policies:
+      # Keep creation FIRST - reads chronologically (back up, then verify +
+      # terminate), matching what actually happens to a given instance over
+      # time. Single grace threshold, shared with ec2-stopped-delete-with-ami
+      # below (both must use the same value - it's one grace period, not two
+      # escalating ones; the create-then-delete split is purely operational,
+      # handled by the FinOpsAmiId presence/absence gate, not by different age
+      # thresholds). Lives only in this YAML file; change it here without
+      # touching finops_c7n code.
+      #
+      # File order here is a readability choice, not a safety mechanism -
+      # analyzed in depth (2026-08-24), see POC-TEST.md decision log. Same-run
+      # create+terminate is already prevented by the live `ami-available` check
+      # in ec2-stopped-delete-with-ami's verified-ami-backup filter below, which
+      # reads real AWS state regardless of which policy ran first. Putting
+      # delete-with-ami first in the file does NOT add meaningful protection:
+      # it only delays a same-run misfire by one scheduled run, and only for
+      # one narrow bug class in that filter (one that would return a false
+      # positive on `ami-available` regardless of the AMI's real state, e.g.
+      # checking "AMI ID exists" instead of "state == available") - and even
+      # then it doesn't prevent the bug, it just means the delayed run usually
+      # coincides with the AMI having actually finished baking anyway. It gives
+      # zero protection against other bug classes (e.g. a wrong AMI/tag match).
+      # Not worth the confusing top-to-bottom read for that narrow a backstop.
+      #
+      # No per-owner notification tag/filter: owners are announced to via a
+      # blanket, global notice that this automation is active (outside this
+      # repo), not a per-resource tag. The only opt-out is "tag:DoNotDelete".
+      - name: ec2-stopped-create-ami
+        resource: aws.ec2
+        max-resources: 20
+        filters:
+          - "State.Name": stopped
+          - "tag:FinOpsStoppedDate": present
+          - type: value
+            key: "tag:FinOpsStoppedDate"
+            op: greater-than
+            value_type: age
+            value: 14  # non-prod; for prod: 30
+          - "tag:DoNotDelete": absent
+          - "tag:FinOpsAmiId": absent
+        actions:
+          - type: create-ami
+            instance-tag: FinOpsAmiId
+            name-prefix: finops-backup
+            description: "Automated FinOps backup before scheduled deletion of ({InstanceId})"
+            no-reboot: true
+            copy-tags:
+              - FinOpsStoppedDate
+            tags:
+              FinOpsSource: ec2-stopped-cleanup
+
+      # Runs SECOND now (see ec2-stopped-create-ami above for why the order
+      # changed 2026-08-24, was first before that). Its own safety doesn't
+      # depend on file order - it comes entirely from the live checks below.
+      - name: ec2-stopped-delete-with-ami
+        resource: aws.ec2
+        max-resources: 20
+        filters:
+          - "State.Name": stopped
+          - "tag:FinOpsStoppedDate": present
+          - type: value
+            key: "tag:FinOpsStoppedDate"
+            op: greater-than
+            value_type: age
+            value: 14  # non-prod; for prod: 30
+          - "tag:DoNotDelete": absent
+          - "tag:FinOpsAmiId": present
+          # Custom filter (finops_c7n/ec2_ami.py, class AmiFromTag). A tag
+          # existing/present is not proof the backup is trustworthy - this does
+          # a live AWS check before allowing delete. Every check it performs is
+          # named below, not hidden in the code: `ami-available` and
+          # `ami-source-matches-instance` are fixed at `true` (schema rejects
+          # any other value - they're not real toggles, just made visible here),
+          # and `match-tags` lists which tags must match between the AMI and the
+          # instance's CURRENT value (FinOpsStoppedDate - proves this AMI backs
+          # up the SAME stop-cycle the instance is in now, not a stale backup
+          # from an earlier cycle that doesn't cover later changes). Any one of
+          # these three failing blocks the delete outright. This live check -
+          # not file order - is what actually prevents an unready AMI from
+          # being consumed, same-run or otherwise.
+          - type: verified-ami-backup
+            instance-tag: FinOpsAmiId
+            ami-available: true
+            ami-source-matches-instance: true
+            match-tags:
+              - FinOpsStoppedDate
+          # Native c7n filter (aws.ec2 only, no finops_c7n code). Independently
+          # confirms the instance's actual last real state transition (from
+          # AWS's own StateTransitionReason, not wiv's tag) is also >14d old.
+          # Closes a real gap: wiv tags/untags FinOpsStoppedDate on a DAILY
+          # check, so a stop -> start -> stop cycle that starts and ends
+          # between two of wiv's daily runs could leave FinOpsStoppedDate
+          # unchanged even though the instance was actually restarted and its
+          # data modified in between. This filter is AWS ground truth, not
+          # polling-based, so it still catches that case. Added alongside
+          # match-tags above, not instead of it - both must agree.
+          - type: state-age
+            op: greater-than
+            days: 14  # non-prod; for prod: 30
+        actions:
+          - type: terminate
+
+      # Unattached EBS cleanup - `aws.ebs` already has native snapshot/delete
+      # actions, so this stays a SINGLE policy/pass (unlike the EC2 pair above):
+      # an EBS snapshot is independent of its source volume as soon as
+      # CreateSnapshot is accepted, so there's no need to wait for it to
+      # complete before deleting the volume, and no verified-ami-backup-style
+      # follow-up verification is needed.
+      - name: ebs-unattached-delete
+        resource: ebs
+        max-resources: 20
+        filters:
+          - State: available
+          - "tag:FinOpsUnattachedDate": present
+          - type: value
+            key: "tag:FinOpsUnattachedDate"
+            op: greater-than
+            value_type: age
+            value: 14  # non-prod; for prod: 30
+          - "tag:DoNotDelete": absent
+          # Custom filter (finops_c7n/ebs_detach.py, class NoRecentDetach).
+          # `DescribeVolumes` keeps no state-transition history, so unlike EC2's
+          # native `state-age`, EBS has no AWS-ground-truth check for how long a
+          # volume has actually been idle - this fills that gap using
+          # CloudTrail's always-on, no-Trail-required 90-day Event History.
+          # Blocks the delete if a `DetachVolume` event for this volume shows up
+          # within the last `days` - i.e. the volume was (re)detached more
+          # recently than the tag above claims. No event in that window means
+          # either it was detached earlier, or never attached at all - both
+          # cases are safe to proceed.
+          - type: cloudtrail-detach-age
+            days: 14  # keep in sync with the FinOpsUnattachedDate threshold above
+        actions:
+          - type: snapshot
+            copy-tags:
+              - FinOpsUnattachedDate
+            tags:
+              FinOpsSource: ebs-unattached-cleanup
+            description: "FinOps pre-delete snapshot (ebs-unattached-cleanup)"
+          - type: delete
+
+      # --- Janitor phase: retention cleanup for the backups the two policies ---
+      # --- above create. Fully native c7n, no finops_c7n code involved.      ---
+      #
+      # RFC's own numbers differ by backup type and prod/nonprod (AMI: D+180
+      # prod / D+30 nonprod from AMI creation; EBS snapshot: D+75 prod / D+30
+      # nonprod from snapshot creation). Agreed simplification for this
+      # deployment: both backup types get one flat 30-day retention, prod and
+      # nonprod alike - not the RFC's original split. Change `days: 30` below
+      # (independently per policy) if that agreement changes.
+      #
+      # Both janitors are scoped ONLY to backups this automation created
+      # (matched by the exact `tag:FinOpsSource` value each creation policy
+      # writes above) - never a blanket "any old AMI/snapshot in the account"
+      # sweep. `tag:DoNotDelete` remains the opt-out, same as the creation
+      # policies, in case a backup is manually flagged to keep past 30 days.
+      - name: ec2-stopped-ami-janitor
+        resource: aws.ami
+        max-resources: 20
+        filters:
+          - "tag:FinOpsSource": ec2-stopped-cleanup
+          - "tag:DoNotDelete": absent
+          - type: image-age
+            op: greater-than
+            days: 30
+        actions:
+          - type: deregister
+            delete-snapshots: true
+
+      - name: ebs-unattached-snapshot-janitor
+        resource: ebs-snapshot
+        max-resources: 20
+        filters:
+          - "tag:FinOpsSource": ebs-unattached-cleanup
+          - "tag:DoNotDelete": absent
+          - type: age
+            op: greater-than
+            days: 30
+        actions:
+          - type: delete
+            skip-ami-snapshots: true
+kind: ConfigMap
+metadata:
+  name: cloud-custodian-ec2-ami-v3-policies
+  namespace: monitoring

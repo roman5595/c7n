@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 720" width="1000" height="720" role="img" aria-label="Flow diagram: a volume first becomes unattached, wiv's daily scan then tags it, and five sequential gates check it on every scheduled run; only if all five pass does the automation snapshot then delete the volume, otherwise the volume is left untouched.">
+  <title>EBS deletion pass — ebs-unattached-delete</title>
+  <desc>Cloud Custodian policy flow: a volume becomes unattached, wiv tags it daily, five gates (live state, tag present, tag age, opt-out, CloudTrail detach check) all must pass, then the automation snapshots and deletes the volume.</desc>
+
+  <rect x="0" y="0" width="1000" height="720" fill="#EEF3F2"/>
+
+  <defs>
+    <marker id="arrowNeutral" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><polygon points="0,0 9,4.5 0,9" fill="#9DB3AD"/></marker>
+    <marker id="arrowPass" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><polygon points="0,0 9,4.5 0,9" fill="#1E7A46"/></marker>
+    <marker id="arrowBlock" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><polygon points="0,0 9,4.5 0,9" fill="#A23B2E"/></marker>
+  </defs>
+
+  <!-- 1. volume becomes unattached (precondition, no tag yet) -->
+  <rect x="300" y="16" width="400" height="56" rx="10" fill="#FFFFFF" stroke="#9DB3AD" stroke-width="1.5"/>
+  <text x="500" y="40" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12.5" fill="#12211E">aws.ebs volume &#8212; State: available</text>
+  <text x="500" y="58" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">no FinOpsUnattachedDate tag yet</text>
+
+  <line x1="500" y1="72" x2="500" y2="96" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral)"/>
+  <text x="514" y="89" font-family="'Courier New', Courier, monospace" font-size="10" fill="#4E6560">seen by wiv's daily scan</text>
+
+  <!-- 2. wiv tags it -->
+  <rect x="270" y="98" width="460" height="64" rx="10" fill="#FFFFFF" stroke="#9DB3AD" stroke-width="1.5"/>
+  <text x="500" y="124" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="13.5" fill="#12211E">wiv &#8212; external tagger (daily)</text>
+  <text x="500" y="143" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">writes FinOpsUnattachedDate &#183; removes it on re-attach</text>
+
+  <line x1="500" y1="162" x2="500" y2="188" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral)"/>
+  <text x="514" y="179" font-family="'Courier New', Courier, monospace" font-size="10" fill="#4E6560">T+0 tag written</text>
+
+  <!-- trigger -->
+  <text x="500" y="204" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="13" fill="#12211E">policy: ebs-unattached-delete</text>
+
+  <line x1="500" y1="214" x2="500" y2="238" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral)"/>
+
+  <text x="500" y="254" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12" fill="#12211E">5 SEQUENTIAL GATES &#8212; ALL MUST PASS</text>
+
+  <!-- gate row -->
+  <g>
+    <!-- gate 1 -->
+    <rect x="20" y="262" width="180" height="120" rx="10" fill="#E3EBE9" stroke="#9DB3AD" stroke-width="1.5"/>
+    <circle cx="38" cy="280" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+    <text x="38" y="284" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">1</text>
+    <text x="110" y="308" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">LIVE STATE</text>
+    <text x="110" y="328" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">State: available</text>
+    <circle cx="36" cy="363" r="4" fill="#93551C"/>
+    <text x="46" y="367" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">AWS side</text>
+
+    <polyline points="202.5,315 212.5,322 202.5,329" stroke="#9DB3AD" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- gate 2 -->
+    <rect x="215" y="262" width="180" height="120" rx="10" fill="#E3EBE9" stroke="#9DB3AD" stroke-width="1.5"/>
+    <circle cx="233" cy="280" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+    <text x="233" y="284" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">2</text>
+    <text x="305" y="308" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">TAG PRESENT</text>
+    <text x="305" y="328" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">FinOpsUnattachedDate</text>
+    <circle cx="231" cy="363" r="4" fill="#0B6169"/>
+    <text x="241" y="367" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">wiv tag</text>
+
+    <polyline points="397.5,315 407.5,322 397.5,329" stroke="#9DB3AD" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- gate 3 -->
+    <rect x="410" y="262" width="180" height="120" rx="10" fill="#E3EBE9" stroke="#9DB3AD" stroke-width="1.5"/>
+    <circle cx="428" cy="280" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+    <text x="428" y="284" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">3</text>
+    <text x="500" y="308" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">TAG AGE</text>
+    <text x="500" y="328" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">age &gt; 14d nonprod</text>
+    <text x="500" y="344" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">(30d prod)</text>
+    <circle cx="426" cy="363" r="4" fill="#0B6169"/>
+    <text x="436" y="367" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">wiv tag</text>
+
+    <polyline points="592.5,315 602.5,322 592.5,329" stroke="#9DB3AD" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- gate 4 -->
+    <rect x="605" y="262" width="180" height="120" rx="10" fill="#E3EBE9" stroke="#9DB3AD" stroke-width="1.5"/>
+    <circle cx="623" cy="280" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+    <text x="623" y="284" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">4</text>
+    <text x="695" y="308" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">OPT-OUT</text>
+    <text x="695" y="328" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">DoNotDelete</text>
+    <text x="695" y="344" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">absent</text>
+    <circle cx="621" cy="363" r="4" fill="#0B6169"/>
+    <text x="631" y="367" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">human / wiv tag</text>
+
+    <polyline points="787.5,315 797.5,322 787.5,329" stroke="#9DB3AD" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- gate 5 -->
+    <rect x="800" y="262" width="180" height="120" rx="10" fill="#E3EBE9" stroke="#93551C" stroke-width="2.5"/>
+    <circle cx="818" cy="280" r="13" fill="#FFFFFF" stroke="#93551C" stroke-width="2"/>
+    <text x="818" y="284" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#93551C">5</text>
+    <text x="890" y="308" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">CLOUDTRAIL DETACH</text>
+    <text x="890" y="328" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">detach-age &#8804;14d</text>
+    <circle cx="816" cy="363" r="4" fill="#93551C"/>
+    <text x="826" y="367" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">AWS side</text>
+  </g>
+
+  <!-- fork -->
+  <line x1="500" y1="414" x2="500" y2="452" stroke="#1E7A46" stroke-width="2.5" fill="none" marker-end="url(#arrowPass)"/>
+  <text x="514" y="438" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#1E7A46">all 5 pass</text>
+
+  <line x1="500" y1="414" x2="825" y2="489" stroke="#A23B2E" stroke-width="2" stroke-dasharray="6 5" fill="none" marker-end="url(#arrowBlock)"/>
+  <text x="600" y="432" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11" fill="#A23B2E">any fails</text>
+
+  <rect x="825" y="414" width="155" height="150" rx="10" fill="#FFFFFF" stroke="#A23B2E" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="902" y="440" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12.5" fill="#A23B2E">&#10007; stopped</text>
+  <text x="902" y="462" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">not deleted</text>
+  <text x="902" y="478" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">tag preserved</text>
+  <text x="902" y="494" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">re-checked</text>
+  <text x="902" y="510" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">next run</text>
+
+  <!-- note -->
+  <rect x="390" y="472" width="220" height="24" rx="12" fill="#F2E1CC" stroke="#93551C" stroke-width="1.2"/>
+  <text x="500" y="488" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="10" fill="#93551C">verified safe &#8212; no data loss</text>
+
+  <!-- actions -->
+  <rect x="50" y="506" width="340" height="100" rx="10" fill="#E3EBE9" stroke="#0B6169" stroke-width="1.75"/>
+  <circle cx="72" cy="526" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+  <text x="72" y="530" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">1</text>
+  <text x="220" y="532" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12.5" fill="#12211E">snapshot &#8212; CreateSnapshot</text>
+  <text x="220" y="552" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">copy-tags: FinOpsUnattachedDate</text>
+  <text x="220" y="568" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">tags: FinOpsSource=ebs-unattached-cleanup</text>
+
+  <line x1="390" y1="556" x2="448" y2="556" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral)"/>
+
+  <rect x="450" y="506" width="340" height="100" rx="10" fill="#E3EBE9" stroke="#0B6169" stroke-width="1.75"/>
+  <circle cx="472" cy="526" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+  <text x="472" y="530" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">2</text>
+  <text x="630" y="532" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12.5" fill="#12211E">delete &#8212; DeleteVolume</text>
+  <text x="630" y="552" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">issued same pass, no wait</text>
+  <text x="630" y="568" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">byte-for-byte restore confirmed</text>
+
+  <line x1="500" y1="606" x2="500" y2="626" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral)"/>
+
+  <!-- result -->
+  <rect x="250" y="628" width="500" height="70" rx="10" fill="#D3ECEA" stroke="#0B6169" stroke-width="2"/>
+  <text x="500" y="654" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="13.5" fill="#12211E">Result: volume deleted, snapshot retained</text>
+  <text x="500" y="674" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">FinOpsSource=ebs-unattached-cleanup &#183; FinOpsUnattachedDate copied</text>
+
+  <rect x="770" y="646" width="205" height="34" rx="17" fill="#D3ECEA" stroke="#0B6169" stroke-width="1.5"/>
+  <text x="872" y="668" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">T+14d / T+30d prod</text>
+</svg>

@@ -1,0 +1,113 @@
+# Image pushed (docker.io/roman5595/c7n-org-ami:0.9.51.0-finops.2, public
+# repo, same personal Docker Hub account c7n-custom already used). Still
+# `suspend: true` below until a manual run has been reviewed.
+#
+# This is the "baked" alternative to ../../c7n-updated-cloudtrail/ (ConfigMap
+# + sitecustomize.py delivery, no custom image). Same finops_c7n code
+# (including ebs_detach.py/cloudtrail-detach-age), same policies, same
+# target account/IAM - only HOW the custom code gets into the running
+# container changes, back to a custom Docker image like ../../c7n-custom/,
+# but keeping sitecustomize.py as the load mechanism instead of reverting to
+# c7n-custom's bootstrap.py ENTRYPOINT wrapper. See ../README.md for the
+# full comparison of all four variants now sitting side by side.
+#
+# Net effect: build-time test gate is back (../Dockerfile's `test` stage - a
+# `docker build` fails outright if unit tests or `c7n-org validate` fail),
+# AND the bare `c7n-org` command still works directly with zero wrapper -
+# confirmed locally: `docker run <image> validate -c ... -u ...` with no
+# ENTRYPOINT override at all succeeds. Best of both prior variants; the
+# trade-off is back to needing an image registry and a build/push step,
+# which ../../c7n-updated*/ specifically avoided.
+#
+# Target environment for this POC: account <ACCOUNT_ID>
+# (pti-corebe-plint-002), EKS cluster pti-corebe-plint-002 in eu-west-1,
+# monitoring namespace.
+#
+# IAM/ServiceAccount: identical to the other variants (same role/permissions
+# regardless of delivery mechanism) - see ../../c7n-custom/iam/ and
+# ./serviceaccount.yaml (copied over unchanged).
+#
+# Still to do before this could ever be applied:
+#   1. `docker build -t <your-registry>/c7n-org-finops:0.9.51.0-finops.2 .`
+#      from this folder (already done locally once as a smoke test - see
+#      POC-TEST.md - but not pushed anywhere).
+#   2. Push it somewhere this EKS cluster can actually pull from (ECR in
+#      this account, or a Docker Hub account like c7n-custom's personal one)
+#      - not done, needs a decision on where first.
+#   3. Update `image:` below to that real, pushed reference.
+#   4. Generate/apply the one remaining ConfigMap (policies only, code and
+#      sitecustomize are baked in now - no longer needed as ConfigMaps):
+#        kubectl create configmap cloud-custodian-ec2-ami-v4-policies \
+#          --from-file=accounts.yml=examples/accounts.yml \
+#          --from-file=policies.yml=examples/policies.yml \
+#          -n monitoring --dry-run=client -o yaml > deploy/configmap-policies.yaml
+#   5. kubectl apply -f deploy/serviceaccount.yaml (no-op) → the one
+#      configmap-policies.yaml → then this file.
+#   6. Leave `suspend: true` until a manual run has been reviewed.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloud-custodian-ec2-ami-v4
+  namespace: monitoring
+spec:
+  schedule: '30 3 * * *'
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: cloud-custodian-ec2-ami
+          # Pushed to Roman's personal Docker Hub account (public repo, same
+          # account c7n-custom already used) - docker.io/roman5595/
+          # c7n-org-ami:0.9.51.0-finops.2, digest
+          # sha256:9f2b9554aaace2dd2c0bcba75aca11eaf8c9c496b09a9d67f5d9f2dae0d5e4c9.
+          # No imagePullSecrets needed - the repo is public.
+          containers:
+            - name: c7n
+              image: docker.io/roman5595/c7n-org-ami:0.9.51.0-finops.2
+              imagePullPolicy: IfNotPresent
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # No bootstrap module, no PYTHONPATH env var needed here -
+                  # finops_c7n and sitecustomize.py are both baked into the
+                  # image itself (../Dockerfile), so the bare c7n-org binary
+                  # (this image's own default ENTRYPOINT) already has
+                  # create-ami/verified-ami-backup/cloudtrail-detach-age
+                  # available before this script even runs.
+                  c7n-org run -c /policies/accounts.yml -u /policies/policies.yml -s /tmp/c7n-output -v
+                  rc=$?
+                  echo "===== MATCHED RESOURCES ====="
+                  find /tmp/c7n-output -name resources.json -exec sh -c 'echo "## $1"; cat "$1"; echo' _ {} \;
+                  echo "===== FINOPS REPORT (ec2, csv) ====="
+                  c7n-org report -c /policies/accounts.yml -u /policies/policies.yml -s /tmp/c7n-output \
+                    --resource ec2 --format csv --no-default-fields \
+                    --field "InstanceId=InstanceId" \
+                    --field "Name=tag:Name" \
+                    --field "State=State.Name" \
+                    --field "StoppedSince=tag:FinOpsStoppedDate" \
+                    --field "AmiId=tag:FinOpsAmiId" \
+                    2>/dev/null | tee /tmp/c7n-output/finops-report-ec2.csv || echo "report failed (rc=$?) - continuing"
+                  exit $rc
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+              volumeMounts:
+                - name: policies
+                  mountPath: /policies
+                  readOnly: true
+          volumes:
+            - name: policies
+              configMap:
+                name: cloud-custodian-ec2-ami-v4-policies

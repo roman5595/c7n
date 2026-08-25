@@ -1,0 +1,7 @@
+accounts:
+  - name: "pti-corebe-plint-002"
+    account_id: "<ACCOUNT_ID>"
+    role: arn:aws:iam::<ACCOUNT_ID>:role/pti-corebe-plint-002-cloud-custodian-ec2-ami-role
+    regions:
+      - eu-west-1
+      - eu-central-1

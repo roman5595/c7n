@@ -1,0 +1,126 @@
+# Draft only - not applied to the cluster yet (suspend: true below, and this
+# manifest itself hasn't been kubectl apply'd).
+#
+# This is c7n-updated (ConfigMap + sitecustomize.py delivery, no custom
+# Docker image - see ../../c7n-updated/README.md for that mechanism itself)
+# PLUS one addition: finops_c7n/ebs_detach.py, a new `cloudtrail-detach-age`
+# filter on `ebs-unattached-delete` that cross-checks CloudTrail's Event
+# History before allowing a volume delete, closing the gap where
+# `tag:FinOpsUnattachedDate` alone (unlike EC2's native `state-age`) has no
+# AWS-ground-truth backstop. See ../README.md for the full writeup.
+#
+# Deliberately named/suffixed "-v3" and given its own ConfigMap names so it
+# cannot collide with the already-deployed c7n-updated CronJob
+# (cloud-custodian-ec2-ami-v2, same monitoring namespace) while both exist
+# side by side for review.
+#
+# Target environment for this POC: account <ACCOUNT_ID>
+# (pti-corebe-plint-002), EKS cluster pti-corebe-plint-002 in eu-west-1,
+# monitoring namespace.
+#
+# IAM/ServiceAccount: identical to c7n-updated/c7n-custom (same role, now
+# with an added cloudtrail:LookupEvents permission for the new filter) -
+# see ../../c7n-custom/iam/ and ./serviceaccount.yaml (copied over unchanged).
+#
+# Still to do before applying:
+#   1. Run ../scripts/test-locally.sh and confirm it passes.
+#   2. Generate all three ConfigMaps referenced below:
+#        kubectl create configmap cloud-custodian-ec2-ami-v3-policies \
+#          --from-file=accounts.yml=examples/accounts.yml \
+#          --from-file=policies.yml=examples/policies.yml \
+#          -n monitoring --dry-run=client -o yaml > deploy/configmap-policies.yaml
+#        kubectl create configmap cloud-custodian-ec2-ami-v3-code \
+#          --from-file=finops_c7n/__init__.py \
+#          --from-file=finops_c7n/ec2_ami.py \
+#          --from-file=finops_c7n/ebs_detach.py \
+#          -n monitoring --dry-run=client -o yaml > deploy/configmap-code.yaml
+#        kubectl create configmap cloud-custodian-ec2-ami-v3-sitecustomize \
+#          --from-file=sitecustomize.py \
+#          -n monitoring --dry-run=client -o yaml > deploy/configmap-sitecustomize.yaml
+#   3. kubectl apply -f deploy/serviceaccount.yaml (no-op, already applied)
+#      and kubectl apply -f the three configmap-*.yaml files, then this file.
+#   4. Leave `suspend: true` until you've triggered at least one manual run
+#      with `kubectl create job --from=cronjob/cloud-custodian-ec2-ami-v3 -n monitoring ...`
+#      and reviewed its logs.
+#   5. Decide whether this replaces or runs alongside c7n-updated's CronJob.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: cloud-custodian-ec2-ami-v3
+  namespace: monitoring
+spec:
+  schedule: '30 3 * * *'
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 86400
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: cloud-custodian-ec2-ami
+          # No imagePullSecrets, no custom image at all - this is the public,
+          # unmodified upstream image.
+          containers:
+            - name: c7n
+              image: docker.io/cloudcustodian/c7n-org:0.9.51.0
+              imagePullPolicy: IfNotPresent
+              env:
+                - name: PYTHONPATH
+                  value: /extra-python
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  # No bootstrap module needed here - sitecustomize.py
+                  # (mounted below) auto-registers finops_c7n before this
+                  # process even starts, so the plain c7n-org binary already
+                  # has create-ami/verified-ami-backup/cloudtrail-detach-age
+                  # available.
+                  c7n-org run -c /policies/accounts.yml -u /policies/policies.yml -s /tmp/c7n-output -v
+                  rc=$?
+                  echo "===== MATCHED RESOURCES ====="
+                  find /tmp/c7n-output -name resources.json -exec sh -c 'echo "## $1"; cat "$1"; echo' _ {} \;
+                  echo "===== FINOPS REPORT (ec2, csv) ====="
+                  c7n-org report -c /policies/accounts.yml -u /policies/policies.yml -s /tmp/c7n-output \
+                    --resource ec2 --format csv --no-default-fields \
+                    --field "InstanceId=InstanceId" \
+                    --field "Name=tag:Name" \
+                    --field "State=State.Name" \
+                    --field "StoppedSince=tag:FinOpsStoppedDate" \
+                    --field "AmiId=tag:FinOpsAmiId" \
+                    2>/dev/null | tee /tmp/c7n-output/finops-report-ec2.csv || echo "report failed (rc=$?) - continuing"
+                  exit $rc
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 512Mi
+                limits:
+                  cpu: 500m
+                  memory: 1Gi
+              volumeMounts:
+                - name: policies
+                  mountPath: /policies
+                  readOnly: true
+                - name: finops-code
+                  mountPath: /extra-python/finops_c7n
+                  readOnly: true
+                - name: sitecustomize
+                  mountPath: /usr/lib/python3.12/sitecustomize.py
+                  # subPath: mounts only this one file, doesn't hide the rest
+                  # of /usr/lib/python3.12/ (which the interpreter needs).
+                  subPath: sitecustomize.py
+                  readOnly: true
+          volumes:
+            - name: policies
+              configMap:
+                name: cloud-custodian-ec2-ami-v3-policies
+            - name: finops-code
+              configMap:
+                name: cloud-custodian-ec2-ami-v3-code
+            - name: sitecustomize
+              configMap:
+                name: cloud-custodian-ec2-ami-v3-sitecustomize

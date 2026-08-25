@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 535" width="1000" height="535" role="img" aria-label="Flow diagram: the AMI the delete-with-ami pass leaves behind is checked against three gates by a separate janitor policy, and only if all three pass is the AMI deregistered along with its backing snapshots; failing any gate keeps the AMI for another day.">
+  <title>EC2 AMI janitor pass — ec2-stopped-ami-janitor</title>
+  <desc>Cloud Custodian retention policy: an AMI created by the backup pass is checked against three gates (ownership, opt-out, retention age) and, once past retention (30 days non-prod / 90 days prod), is deregistered along with its backing snapshots.</desc>
+
+  <rect x="0" y="0" width="1000" height="535" fill="#EEF3F2"/>
+
+  <defs>
+    <marker id="arrowNeutral3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><polygon points="0,0 9,4.5 0,9" fill="#9DB3AD"/></marker>
+    <marker id="arrowPass3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><polygon points="0,0 9,4.5 0,9" fill="#1E7A46"/></marker>
+    <marker id="arrowBlock3" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><polygon points="0,0 9,4.5 0,9" fill="#A23B2E"/></marker>
+  </defs>
+
+  <text x="500" y="30" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="11" fill="#4E6560">T+14d / 30d (approx) &#8212; AMI exists, retention clock starts</text>
+
+  <text x="500" y="56" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="13" fill="#12211E">policy: ec2-stopped-ami-janitor</text>
+  <text x="500" y="74" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">same CronJob run, its own scheduled pass</text>
+
+  <line x1="500" y1="82" x2="500" y2="104" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral3)"/>
+
+  <text x="500" y="118" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12" fill="#12211E">3 SEQUENTIAL GATES &#8212; ALL MUST PASS</text>
+
+  <g>
+    <rect x="50" y="126" width="280" height="120" rx="10" fill="#E3EBE9" stroke="#9DB3AD" stroke-width="1.5"/>
+    <circle cx="72" cy="144" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+    <text x="72" y="148" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">1</text>
+    <text x="190" y="172" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">OWNERSHIP</text>
+    <text x="190" y="192" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">FinOpsSource =</text>
+    <text x="190" y="208" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">ec2-stopped-cleanup</text>
+    <circle cx="70" cy="227" r="4" fill="#0B6169"/>
+    <text x="80" y="231" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">automation tag</text>
+
+    <polyline points="340,177 350,184 340,191" stroke="#9DB3AD" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="360" y="126" width="280" height="120" rx="10" fill="#E3EBE9" stroke="#9DB3AD" stroke-width="1.5"/>
+    <circle cx="382" cy="144" r="13" fill="#FFFFFF" stroke="#0B6169" stroke-width="2"/>
+    <text x="382" y="148" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">2</text>
+    <text x="500" y="172" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">OPT-OUT</text>
+    <text x="500" y="192" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">DoNotDelete</text>
+    <text x="500" y="208" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">absent</text>
+    <circle cx="380" cy="227" r="4" fill="#0B6169"/>
+    <text x="390" y="231" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">human / wiv tag</text>
+
+    <polyline points="650,177 660,184 650,191" stroke="#9DB3AD" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <rect x="670" y="126" width="280" height="120" rx="10" fill="#E3EBE9" stroke="#93551C" stroke-width="2.5"/>
+    <circle cx="692" cy="144" r="13" fill="#FFFFFF" stroke="#93551C" stroke-width="2"/>
+    <text x="692" y="148" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#93551C">3</text>
+    <text x="810" y="172" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#12211E">RETENTION AGE</text>
+    <text x="810" y="192" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">image-age &gt; 30d</text>
+    <text x="810" y="208" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">nonprod (90d prod)</text>
+    <circle cx="690" cy="227" r="4" fill="#93551C"/>
+    <text x="700" y="231" font-family="'Courier New', Courier, monospace" font-size="9" fill="#4E6560">AWS side</text>
+  </g>
+
+  <line x1="500" y1="276" x2="500" y2="314" stroke="#1E7A46" stroke-width="2.5" fill="none" marker-end="url(#arrowPass3)"/>
+  <text x="514" y="300" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11.5" fill="#1E7A46">all 3 pass</text>
+
+  <line x1="500" y1="276" x2="755" y2="331" stroke="#A23B2E" stroke-width="2" stroke-dasharray="6 5" fill="none" marker-end="url(#arrowBlock3)"/>
+  <text x="590" y="294" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="11" fill="#A23B2E">any fails</text>
+
+  <rect x="755" y="276" width="185" height="110" rx="10" fill="#FFFFFF" stroke="#A23B2E" stroke-width="1.5" stroke-dasharray="5 4"/>
+  <text x="847" y="302" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12.5" fill="#A23B2E">&#10007; kept</text>
+  <text x="847" y="324" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">AMI untouched</text>
+  <text x="847" y="342" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">re-checked next run</text>
+
+  <rect x="300" y="336" width="400" height="90" rx="10" fill="#E3EBE9" stroke="#0B6169" stroke-width="1.75"/>
+  <text x="500" y="364" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="12.5" fill="#12211E">deregister &#8212; DeregisterImage</text>
+  <text x="500" y="384" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">delete-snapshots: true</text>
+  <text x="500" y="400" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">also deletes the AMI's backing snapshots</text>
+
+  <line x1="500" y1="426" x2="500" y2="446" stroke="#9DB3AD" stroke-width="2" fill="none" marker-end="url(#arrowNeutral3)"/>
+
+  <rect x="270" y="448" width="460" height="64" rx="10" fill="#D3ECEA" stroke="#0B6169" stroke-width="2"/>
+  <text x="500" y="474" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="13.5" fill="#12211E">Result: AMI deregistered, snapshots deleted</text>
+  <text x="500" y="492" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-size="10.5" fill="#4E6560">last trace of the stopped-instance backup is gone</text>
+
+  <rect x="745" y="462" width="210" height="34" rx="17" fill="#D3ECEA" stroke="#0B6169" stroke-width="1.5"/>
+  <text x="850" y="484" text-anchor="middle" font-family="'Courier New', Courier, monospace" font-weight="bold" font-size="11" fill="#0B6169">30d nonprod / 90d prod</text>
+</svg>
