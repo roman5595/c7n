@@ -8,9 +8,8 @@ policies:
   # thresholds). Lives only in this YAML file; change it here without
   # touching finops_c7n code.
   #
-  # File order here is a readability choice, not a safety mechanism -
-  # analyzed in depth (2026-08-24), see POC-TEST.md decision log. Same-run
-  # create+terminate is already prevented by the live `ami-available` check
+  # File order here is a readability choice, not a safety mechanism.
+  # Same-run create+terminate is already prevented by the live `ami-available` check
   # in ec2-stopped-delete-with-ami's verified-ami-backup filter below, which
   # reads real AWS state regardless of which policy ran first. Putting
   # delete-with-ami first in the file does NOT add meaningful protection:

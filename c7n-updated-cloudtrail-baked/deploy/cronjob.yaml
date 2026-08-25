@@ -1,53 +1,39 @@
-# Image pushed (docker.io/roman5595/c7n-org-ami:0.9.51.0-finops.2, public
-# repo, same personal Docker Hub account c7n-custom already used). Still
-# `suspend: true` below until a manual run has been reviewed.
+# Custom-image delivery: finops_c7n/ and sitecustomize.py are baked into
+# the image at build time (../Dockerfile) instead of mounted via ConfigMap.
+# Trade-off vs. ../../c7n-updated-cloudtrail/: needs an image registry and a
+# build/push step, in exchange for a real build-time test gate (`docker
+# build` fails outright if unit tests or `c7n-org validate` fail - a bad
+# build can never reach `docker push`). Bare `c7n-org`/`custodian` still
+# works directly, no wrapper, no custom ENTRYPOINT - same sitecustomize.py
+# mechanism as the ConfigMap variant, just baked in instead of mounted.
 #
-# This is the "baked" alternative to ../../c7n-updated-cloudtrail/ (ConfigMap
-# + sitecustomize.py delivery, no custom image). Same finops_c7n code
-# (including ebs_detach.py/cloudtrail-detach-age), same policies, same
-# target account/IAM - only HOW the custom code gets into the running
-# container changes, back to a custom Docker image like ../../c7n-custom/,
-# but keeping sitecustomize.py as the load mechanism instead of reverting to
-# c7n-custom's bootstrap.py ENTRYPOINT wrapper. See ../README.md for the
-# full comparison of all four variants now sitting side by side.
-#
-# Net effect: build-time test gate is back (../Dockerfile's `test` stage - a
-# `docker build` fails outright if unit tests or `c7n-org validate` fail),
-# AND the bare `c7n-org` command still works directly with zero wrapper -
-# confirmed locally: `docker run <image> validate -c ... -u ...` with no
-# ENTRYPOINT override at all succeeds. Best of both prior variants; the
-# trade-off is back to needing an image registry and a build/push step,
-# which ../../c7n-updated*/ specifically avoided.
-#
-# Target environment for this POC: account <ACCOUNT_ID>
-# (pti-corebe-plint-002), EKS cluster pti-corebe-plint-002 in eu-west-1,
-# monitoring namespace.
-#
-# IAM/ServiceAccount: identical to the other variants (same role/permissions
-# regardless of delivery mechanism) - see ../../c7n-custom/iam/ and
-# ./serviceaccount.yaml (copied over unchanged).
-#
-# Still to do before this could ever be applied:
-#   1. `docker build -t <your-registry>/c7n-org-finops:0.9.51.0-finops.2 .`
-#      from this folder (already done locally once as a smoke test - see
-#      POC-TEST.md - but not pushed anywhere).
-#   2. Push it somewhere this EKS cluster can actually pull from (ECR in
-#      this account, or a Docker Hub account like c7n-custom's personal one)
-#      - not done, needs a decision on where first.
-#   3. Update `image:` below to that real, pushed reference.
-#   4. Generate/apply the one remaining ConfigMap (policies only, code and
-#      sitecustomize are baked in now - no longer needed as ConfigMaps):
-#        kubectl create configmap cloud-custodian-ec2-ami-v4-policies \
+# Before applying:
+#   1. Set up IAM first - see ../iam/README.md (now includes S3 + CloudWatch
+#      permissions for the hub role - see ../S3-AND-METRICS-FINDINGS.md).
+#   2. Fill in ../examples/accounts.yml and review ../examples/policies.yml.
+#   2b. Fill in <S3_BUCKET_NAME>/<S3_PREFIX>/<REGION> in this file's command
+#      block (the bucket must already exist, in this hub account).
+#   3. Build and push to a registry you control:
+#        docker build -t <YOUR_REGISTRY>/c7n-org-finops:<TAG> .
+#        docker push <YOUR_REGISTRY>/c7n-org-finops:<TAG>
+#      (the build's `test` stage runs the full unit test suite + `c7n-org
+#      validate` - a failing test fails the build, nothing gets pushed)
+#   4. Update `image:` below to that pushed reference.
+#   5. Generate the one remaining ConfigMap (policies only - code and
+#      sitecustomize are baked into the image, no longer ConfigMaps):
+#        kubectl create configmap cloud-custodian-ec2-ami-policies \
 #          --from-file=accounts.yml=examples/accounts.yml \
 #          --from-file=policies.yml=examples/policies.yml \
 #          -n monitoring --dry-run=client -o yaml > deploy/configmap-policies.yaml
-#   5. kubectl apply -f deploy/serviceaccount.yaml (no-op) → the one
-#      configmap-policies.yaml → then this file.
-#   6. Leave `suspend: true` until a manual run has been reviewed.
+#   6. kubectl apply -f deploy/serviceaccount.yaml, then
+#      configmap-policies.yaml, then this file.
+#   7. Leave `suspend: true` until you've triggered at least one manual run
+#      with `kubectl create job --from=cronjob/cloud-custodian-ec2-ami -n monitoring ...`
+#      and reviewed its logs.
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: cloud-custodian-ec2-ami-v4
+  name: cloud-custodian-ec2-ami
   namespace: monitoring
 spec:
   schedule: '30 3 * * *'
@@ -63,14 +49,11 @@ spec:
         spec:
           restartPolicy: Never
           serviceAccountName: cloud-custodian-ec2-ami
-          # Pushed to Roman's personal Docker Hub account (public repo, same
-          # account c7n-custom already used) - docker.io/roman5595/
-          # c7n-org-ami:0.9.51.0-finops.2, digest
-          # sha256:9f2b9554aaace2dd2c0bcba75aca11eaf8c9c496b09a9d67f5d9f2dae0d5e4c9.
-          # No imagePullSecrets needed - the repo is public.
+          # No imagePullSecrets shown here - add one if your registry is
+          # private. Public ECR/Docker Hub repos don't need it.
           containers:
             - name: c7n
-              image: docker.io/roman5595/c7n-org-ami:0.9.51.0-finops.2
+              image: <YOUR_REGISTRY>/c7n-org-finops:<TAG>
               imagePullPolicy: IfNotPresent
               command:
                 - /bin/sh
@@ -82,19 +65,33 @@ spec:
                   # (this image's own default ENTRYPOINT) already has
                   # create-ami/verified-ami-backup/cloudtrail-detach-age
                   # available before this script even runs.
-                  c7n-org run -c /policies/accounts.yml -u /policies/policies.yml -s /tmp/c7n-output -v
+                  #
+                  # Output (-s) goes straight to the hub-account S3 bucket,
+                  # not a local dir - the bucket is the durable audit trail,
+                  # kubectl logs are not. --metrics-uri aws://master sends
+                  # CloudWatch metrics (namespace CloudMaid) to this same hub
+                  # account too, regardless of which account's resources are
+                  # being scanned. Both validated in ../S3-AND-METRICS-FINDINGS.md
+                  # - fill in <S3_BUCKET_NAME>/<S3_PREFIX>/<REGION> below
+                  # (region must be the bucket's own region).
+                  S3_OUT="s3://<S3_BUCKET_NAME>/<S3_PREFIX>?region=<REGION>"
+                  c7n-org run -c /policies/accounts.yml -u /policies/policies.yml \
+                    -s "$S3_OUT" \
+                    --metrics-uri "aws://master?region=<REGION>" \
+                    -v
                   rc=$?
-                  echo "===== MATCHED RESOURCES ====="
-                  find /tmp/c7n-output -name resources.json -exec sh -c 'echo "## $1"; cat "$1"; echo' _ {} \;
+                  echo "===== OUTPUT ====="
+                  echo "Per-run resources/metadata/logs: s3://<S3_BUCKET_NAME>/<S3_PREFIX>/<account-name>/<region>/<policy-name>/YYYY/MM/DD/HH/ (gzip'd JSON)"
+                  echo "Metrics: CloudWatch, namespace CloudMaid, this (hub) account"
                   echo "===== FINOPS REPORT (ec2, csv) ====="
-                  c7n-org report -c /policies/accounts.yml -u /policies/policies.yml -s /tmp/c7n-output \
+                  c7n-org report -c /policies/accounts.yml -u /policies/policies.yml -s "$S3_OUT" \
                     --resource ec2 --format csv --no-default-fields \
                     --field "InstanceId=InstanceId" \
                     --field "Name=tag:Name" \
                     --field "State=State.Name" \
                     --field "StoppedSince=tag:FinOpsStoppedDate" \
                     --field "AmiId=tag:FinOpsAmiId" \
-                    2>/dev/null | tee /tmp/c7n-output/finops-report-ec2.csv || echo "report failed (rc=$?) - continuing"
+                    2>/dev/null || echo "report failed (rc=$?) - continuing"
                   exit $rc
               resources:
                 requests:
@@ -110,4 +107,4 @@ spec:
           volumes:
             - name: policies
               configMap:
-                name: cloud-custodian-ec2-ami-v4-policies
+                name: cloud-custodian-ec2-ami-policies

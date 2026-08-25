@@ -335,5 +335,5 @@ data:
             return matched
 kind: ConfigMap
 metadata:
-  name: cloud-custodian-ec2-ami-v3-code
+  name: cloud-custodian-ec2-ami-code
   namespace: monitoring

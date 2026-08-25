@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowIrsaServiceAccountAssumption",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/<EKS_OIDC_PROVIDER>"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "<EKS_OIDC_PROVIDER>:sub": "system:serviceaccount:monitoring:cloud-custodian-ec2-ami",
+          "<EKS_OIDC_PROVIDER>:aud": "sts.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "AllowSelfAssumeForC7nOrgAccountsYml",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::<ACCOUNT_ID>:role/<CLUSTER_NAME>-cloud-custodian-ec2-ami-role"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}

@@ -2,12 +2,13 @@ apiVersion: v1
 data:
   accounts.yml: |
     accounts:
-      - name: "pti-corebe-plint-002"
+      - name: "<ACCOUNT_NAME>"
         account_id: "<ACCOUNT_ID>"
-        role: arn:aws:iam::<ACCOUNT_ID>:role/pti-corebe-plint-002-cloud-custodian-ec2-ami-role
+        role: arn:aws:iam::<ACCOUNT_ID>:role/<CLUSTER_NAME>-cloud-custodian-ec2-ami-role
         regions:
-          - eu-west-1
-          - eu-central-1
+          - <REGION>
+          # add more regions here as needed - c7n-org fans out per region
+          # automatically, no code or extra IAM required (see README)
   policies.yml: |
     policies:
       # Keep creation FIRST - reads chronologically (back up, then verify +
@@ -19,9 +20,8 @@ data:
       # thresholds). Lives only in this YAML file; change it here without
       # touching finops_c7n code.
       #
-      # File order here is a readability choice, not a safety mechanism -
-      # analyzed in depth (2026-08-24), see POC-TEST.md decision log. Same-run
-      # create+terminate is already prevented by the live `ami-available` check
+      # File order here is a readability choice, not a safety mechanism.
+      # Same-run create+terminate is already prevented by the live `ami-available` check
       # in ec2-stopped-delete-with-ami's verified-ami-backup filter below, which
       # reads real AWS state regardless of which policy ran first. Putting
       # delete-with-ami first in the file does NOT add meaningful protection:
@@ -193,5 +193,5 @@ data:
             skip-ami-snapshots: true
 kind: ConfigMap
 metadata:
-  name: cloud-custodian-ec2-ami-v4-policies
+  name: cloud-custodian-ec2-ami-policies
   namespace: monitoring

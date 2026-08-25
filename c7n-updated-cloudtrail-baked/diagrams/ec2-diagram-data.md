@@ -2,7 +2,7 @@
 
 Every gate a stopped EC2 instance clears before Cloud Custodian backs it up as an AMI, terminates it — and, weeks later, before that AMI itself is deregistered by the janitor pass.
 
-POC scope · account <ACCOUNT_ID> (pti-corebe-plint-002) · eu-west-1
+Scope: account <ACCOUNT_ID>, region <REGION>
 
 **Legend:** teal dot = tag-based check · amber dot = AWS-side check · thick amber border = can't be spoofed by a tag · solid green = all gates pass · dashed red = any gate fails
 
@@ -94,7 +94,7 @@ Native `state-age` filter, reading AWS's own `StateTransitionReason` — indepen
 
 *Source: AWS side*
 
-> 🔍 **Why file order (create first, delete second) isn't the safety mechanism:** analyzed in depth, not assumed — see the 2026-08-24 entry in `POC-TEST.md`'s decision log. Both policies run in the same invocation every time; safety comes from gates 6 and 7 reading real AWS state at evaluation time, not from which policy happens to run first. A bug in either of those live checks would still fire on whichever run first sees a passing result, regardless of file order — order can only ever delay a misfire by one run, for one narrow bug shape, and that's a coincidence of timing, not real protection. Reordered to match the chronological read instead.
+> 🔍 **Why file order (create first, delete second) isn't the safety mechanism:** both policies run in the same invocation every time; safety comes from gates 6 and 7 reading real AWS state at evaluation time, not from which policy happens to run first. A bug in either of those live checks would still fire on whichever run first sees a passing result, regardless of file order — order can only ever delay a misfire by one run, for one narrow bug shape, and that's a coincidence of timing, not real protection.
 
 > ⚡ **Why "catches a spoofed tag (tested)":** proven directly in the POC, not just designed-in. A fixture instance had its `FinOpsStoppedDate` backdated 40 days, but had genuinely only been stopped for minutes — `state-age` alone blocked it (`matched:0`), even though every tag-based gate above it agreed to proceed. Terminate was then confirmed to still fire correctly once the instance had really been stopped long enough.
 

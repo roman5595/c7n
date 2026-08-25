@@ -1,69 +1,74 @@
-# c7n-updated-cloudtrail-baked — same code, baked into a custom image
+# c7n-updated-cloudtrail-baked
 
-This is [../c7n-updated-cloudtrail/](../c7n-updated-cloudtrail/) (identical
-`finops_c7n` code, including `ebs_detach.py`/`cloudtrail-detach-age`, identical
-policies) delivered a different way: **baked into a custom Docker image at
-build time**, instead of mounted in via ConfigMap volumes at runtime.
+Same automation as [../c7n-updated-cloudtrail/](../c7n-updated-cloudtrail/)
+— identical `finops_c7n` code and policies (stopped-EC2 AMI backup +
+terminate, unattached-EBS snapshot + delete, both with a CloudTrail-backed
+detach-age check, both janitor policies for backup retention) — delivered
+a different way: **baked into a custom Docker image at build time**,
+instead of mounted in via ConfigMap volumes at runtime.
 
-## Four variants now exist - what each one is
+Read [../c7n-updated-cloudtrail/README.md](../c7n-updated-cloudtrail/README.md)
+first for what the automation actually does and the tag contract it
+depends on. This README only covers what's different about *delivery*.
 
-| | `c7n-custom` | `c7n-updated` | `c7n-updated-cloudtrail` | `c7n-updated-cloudtrail-baked` (this one) |
-|---|---|---|---|---|
-| Image | Custom, `Dockerfile`, personal Docker Hub | Plain upstream | Plain upstream | Custom, `Dockerfile` |
-| Code delivery | Baked at build time | ConfigMap volume | ConfigMap volume | Baked at build time |
-| Load mechanism | `bootstrap.py` ENTRYPOINT wrapper | `sitecustomize.py` | `sitecustomize.py` | `sitecustomize.py` |
-| Bare `c7n-org`/`custodian` works? | No - must use the wrapper | Yes | Yes | Yes |
-| Build-time test gate | Yes | No (`scripts/test-locally.sh`, manual) | No (same) | Yes |
-| EBS CloudTrail check | No | No | Yes | Yes |
+## Which variant to use
 
-This variant is the "best of both": the structural immunity to the
-ENTRYPOINT-bypass bug class that made `c7n-updated` worth building in the
-first place (`sitecustomize.py`, not a custom ENTRYPOINT), *plus* the
-build-time test gate that got traded away when `c7n-updated` dropped the
-custom image. The one thing it brings back from `c7n-custom`: needing an
-image registry and a build/push step again.
+| | ConfigMap (`../c7n-updated-cloudtrail/`) | Baked (this one) |
+|---|---|---|
+| Image | Plain upstream, unmodified | Custom, built from `Dockerfile` |
+| Code delivery | Mounted via ConfigMap volumes | `COPY`'d into the image at build time |
+| Registry needed | No | Yes — somewhere this cluster can pull from |
+| Pre-deploy test gate | Manual (`scripts/test-locally.sh`) | Automatic (`docker build` fails outright if tests fail) |
+| Update a policy | Edit YAML, regenerate + reapply ConfigMap | Same, no rebuild needed (`accounts.yml`/`policies.yml` stay ConfigMap-mounted either way) |
+| Update `finops_c7n` code | Edit + regenerate + reapply ConfigMap | Edit, rebuild, push, update `image:` |
 
-## What's actually different from `c7n-updated-cloudtrail`
+Both land on the same `sitecustomize.py` mechanism (Python auto-executes
+it at startup, so the bare `c7n-org`/`custodian` binaries work directly —
+no custom `ENTRYPOINT` wrapper to remember to use in either variant).
 
-- New `Dockerfile` (3-stage: `plugin` → `test` → `runtime`, same shape as
-  `../c7n-custom/Dockerfile`) that `COPY`s `finops_c7n/` and
-  `sitecustomize.py` into the image instead of mounting them.
-- `sitecustomize.py` lands at the exact same path found to win in this
-  image's `sys.path` order (`/usr/lib/python3.12/sitecustomize.py`) - same
-  file, same reasoning, just `COPY`'d at build time instead of mounted.
-- The `test` stage runs the same 22 unit tests, then `c7n-org validate` via
-  the **bare** binary (no wrapper) - if either fails, `docker build` fails,
-  so a bad build can never reach `docker push`.
-- **No custom `ENTRYPOINT`/`CMD` at all** - deliberately left unset,
-  inheriting the upstream image's own. `sitecustomize.py` makes a wrapper
-  unnecessary; confirmed locally that `docker run <image> validate -c ... -u
-  ...` with zero entrypoint override works.
-- `deploy/`: only one ConfigMap now (`cloud-custodian-ec2-ami-v4-policies` -
-  policies/accounts only). No code or sitecustomize ConfigMaps - both are
-  baked into the image. `cronjob.yaml`'s `command:` drops the
-  `PYTHONPATH`/bootstrap plumbing entirely - it's just the plain
-  `c7n-org run`/`report` calls, same as what a bare install would look like.
-- `scripts/test-locally.sh` is gone - `docker build` *is* the test now.
+Pick the ConfigMap variant if you don't want to run a registry for this,
+or if the policy/code content changes often and you'd rather skip the
+build/push cycle. Pick this one if you want `docker build` itself to be a
+hard gate that a broken change can't get past, and you already have
+somewhere to push images.
 
-## Local build/test - already done once
+## What's actually different from `../c7n-updated-cloudtrail/`
+
+- [Dockerfile](Dockerfile): 3-stage build (`plugin` → `test` → `runtime`).
+  `COPY`s `finops_c7n/` and `sitecustomize.py` into the image instead of
+  mounting them. `sitecustomize.py` lands at the same path Python resolves
+  first on this image (`/usr/lib/python3.12/sitecustomize.py`) — same
+  mechanism as the ConfigMap variant, just `COPY`'d at build time.
+- The `test` stage runs the full unit test suite, then `c7n-org validate`
+  via the **bare** binary (no wrapper) — if either fails, `docker build`
+  fails, so a broken build can never reach `docker push`.
+- **No custom `ENTRYPOINT`/`CMD`** — deliberately left unset, inheriting
+  the upstream image's own. `docker run <image> validate -c ... -u ...`
+  works with zero entrypoint override.
+- `deploy/`: only one ConfigMap now (policies/accounts only) — no code or
+  sitecustomize ConfigMaps, both are baked into the image.
+  `cronjob.yaml`'s `command:` drops the `PYTHONPATH` plumbing entirely.
+- No `scripts/test-locally.sh` — `docker build` *is* the test now.
+
+## Build and test locally
 
 ```bash
 docker build -t c7n-org-finops-baked:test .
 ```
 
-Ran for real: all 22 unit tests passed, `c7n-org validate` (bare binary)
-passed, both *inside* the build (`test` stage). Confirmed after the build,
-with zero ENTRYPOINT override:
+The build's `test` stage runs the full unit suite plus `c7n-org validate`
+against the bare binary — a failing test fails the build. **This will
+fail out of the box** against the example `examples/accounts.yml`:
+`c7n-org validate` checks `account_id` against a strict `^[0-9]{12}$`
+schema, and the placeholder `<ACCOUNT_ID>` doesn't match it. Fill in a
+real account ID first (step 2 below) and it passes. After a successful
+build, you can double-check manually:
 
 ```bash
 docker run --rm -v "$(pwd)/examples:/work:ro" c7n-org-finops-baked:test \
   validate -c /work/accounts.yml -u /work/policies.yml
 # => Configuration valid / Validation complete - all policies are valid!
-```
 
-and directly confirmed the registrations exist at runtime:
-
-```bash
 docker run --rm --entrypoint /src/.venv/bin/python c7n-org-finops-baked:test -c "
 from c7n.resources.ec2 import EC2
 from c7n.resources.ebs import EBS
@@ -74,17 +79,46 @@ print('verified-ami-backup' in EC2.filter_registry,
 # => True True True
 ```
 
-See `POC-TEST.md` (in `../c7n-custom/`) for the dated write-up.
+## How to deploy
 
-## Status - deployed and verified for real
+1. Set up IAM — see [iam/README.md](iam/README.md) (identical to the
+   ConfigMap variant — same permissions regardless of delivery mechanism,
+   now includes S3 + CloudWatch for the hub role — see
+   [S3-AND-METRICS-FINDINGS.md](S3-AND-METRICS-FINDINGS.md)).
+2. Fill in [examples/accounts.yml](examples/accounts.yml) and review
+   [examples/policies.yml](examples/policies.yml).
+2b. Fill in `<S3_BUCKET_NAME>`/`<S3_PREFIX>`/`<REGION>` in
+   [deploy/cronjob.yaml](deploy/cronjob.yaml)'s command block — the bucket
+   must already exist, in this hub account.
+3. Build and push to a registry you control:
+   ```bash
+   docker build -t <YOUR_REGISTRY>/c7n-org-finops:<TAG> .
+   docker push <YOUR_REGISTRY>/c7n-org-finops:<TAG>
+   ```
+4. Update `image:` in [deploy/cronjob.yaml](deploy/cronjob.yaml) to that
+   pushed reference.
+5. Generate the one ConfigMap:
+   ```bash
+   kubectl create configmap cloud-custodian-ec2-ami-policies \
+     --from-file=accounts.yml=examples/accounts.yml \
+     --from-file=policies.yml=examples/policies.yml \
+     -n monitoring --dry-run=client -o yaml > deploy/configmap-policies.yaml
+   ```
+6. `kubectl apply -f deploy/serviceaccount.yaml`, then
+   `configmap-policies.yaml`, then `deploy/cronjob.yaml`.
+7. Leave `suspend: true` (the default) until you've triggered at least one
+   manual run and reviewed its logs:
+   ```bash
+   kubectl create job --from=cronjob/cloud-custodian-ec2-ami -n monitoring manual-test-1
+   kubectl logs -n monitoring -l job-name=manual-test-1
+   ```
+   The log now only prints a short CSV summary and the S3 path — the full
+   per-resource JSON is in the bucket, not in `kubectl logs`.
 
-Pushed to `docker.io/roman5595/c7n-org-ami:0.9.51.0-finops.2` (public repo,
-same personal Docker Hub account `c7n-custom` already used). Applied to
-`monitoring` as CronJob `cloud-custodian-ec2-ami-v4` (`suspend: true`,
-alongside `-v2`/`-v3`). A manual run pulled the image from Docker Hub for
-real and completed cleanly - all 5 policies ran across both `eu-west-1`
-and `eu-central-1` with zero registration errors (no fixtures were live at
-the time, so everything reported `matched:0`, but the point of this run was
-proving the baked image + real pull + real cluster works end to end, which
-the earlier variants' fixture-based tests already covered for the
-filter/action logic itself). See `POC-TEST.md` for the dated write-up.
+## Known gaps, not addressed by this repo
+
+Same as [../c7n-updated-cloudtrail/README.md](../c7n-updated-cloudtrail/README.md#known-gaps-not-addressed-by-this-repo)
+— tag-write IAM/SCP restriction, alerting, and multi-account rollout are
+all independent of delivery mechanism. Durable audit trail (S3) and
+metrics are now wired in — see
+[S3-AND-METRICS-FINDINGS.md](S3-AND-METRICS-FINDINGS.md).

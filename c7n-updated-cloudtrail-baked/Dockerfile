@@ -1,5 +1,6 @@
-# The public Cloud Custodian c7n-org image, pinned to the exact tested tag
-# (see ../c7n-custom/Dockerfile for the same pin, resolved to a digest there).
+# The public Cloud Custodian c7n-org image, pinned to the exact tested tag.
+# Consider pinning to a digest (docker.io/cloudcustodian/c7n-org@sha256:...)
+# once you've settled on a version, for reproducible builds.
 ARG C7N_ORG_IMAGE=docker.io/cloudcustodian/c7n-org:0.9.51.0
 
 FROM ${C7N_ORG_IMAGE} AS plugin
@@ -12,18 +13,19 @@ USER root
 COPY --chown=root:root finops_c7n/ /opt/finops-c7n/finops_c7n/
 ENV PYTHONPATH=/opt/finops-c7n
 
-# This is the one meaningful difference from ../c7n-custom/Dockerfile: instead
-# of a custom ENTRYPOINT (`python -m finops_c7n.bootstrap`) that every caller
-# has to remember to use instead of the bare `c7n-org`/`custodian` binaries,
-# sitecustomize.py is baked in at the exact path this image's Python resolves
-# first (verified empirically in ../c7n-updated/ - /usr/lib/python3.12/
-# sitecustomize.py wins over the venv's own site-packages copy). Python's
+# Rather than a custom ENTRYPOINT that every caller has to remember to use
+# instead of the bare `c7n-org`/`custodian` binaries, sitecustomize.py is
+# baked in at the exact path this image's Python resolves first
+# (/usr/lib/python3.12/sitecustomize.py wins over the venv's own
+# site-packages copy - verified empirically against this base image).
+# Python's
 # interpreter auto-executes it at startup regardless of what command actually
 # runs, so finops_c7n registers itself no matter how this image is invoked -
-# the bare `c7n-org` command works directly, no wrapper, no "never call bare
-# c7n-org" foot-gun. Best of both: a custom image (so the test stage below is
-# a real pre-deploy gate again, unlike ../c7n-updated*/'s ConfigMap delivery)
-# without reintroducing the ENTRYPOINT-bypass bug class bootstrap.py had.
+# the bare `c7n-org` command works directly, no wrapper, no "forgot to use
+# the wrapper" foot-gun. Best of both: a custom image (so the test stage
+# below is a real pre-deploy gate, unlike ../c7n-updated-cloudtrail/'s
+# ConfigMap delivery, which has no build step at all to fail on) without an
+# ENTRYPOINT wrapper that every caller has to remember to use.
 COPY --chown=root:root sitecustomize.py /usr/lib/python3.12/sitecustomize.py
 
 FROM plugin AS test
@@ -33,7 +35,7 @@ COPY --chown=root:root examples/ /opt/finops-c7n/examples/
 USER custodian
 
 # Both run via the BARE binaries - proving the baked sitecustomize.py works,
-# not just that the Python files are syntactically fine. Mirrors exactly what
+# not just that the Python files are syntactically fine. Mirrors what
 # ../c7n-updated-cloudtrail/scripts/test-locally.sh proves against the plain
 # upstream image + volume mounts; here it's proven at build time instead.
 RUN /src/.venv/bin/python -m unittest discover \

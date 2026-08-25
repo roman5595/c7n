@@ -26,5 +26,5 @@ data:
     import finops_c7n  # noqa: F401
 kind: ConfigMap
 metadata:
-  name: cloud-custodian-ec2-ami-v3-sitecustomize
+  name: cloud-custodian-ec2-ami-sitecustomize
   namespace: monitoring

@@ -1,9 +1,10 @@
 #!/bin/bash
-# Replaces the Dockerfile test stage from c7n-custom/ (there is no custom
-# image here to build, so nothing runs these automatically - run this by
-# hand, or wire it into CI, before ever regenerating/applying the
-# cloud-custodian-ec2-ami-code or cloud-custodian-ec2-ami-sitecustomize
-# ConfigMaps in deploy/).
+# This variant has no Docker build step (plain upstream image, code
+# delivered via ConfigMap - see ../c7n-updated-cloudtrail-baked/ for the
+# custom-image alternative, which gets an equivalent gate for free at
+# `docker build` time). Run this by hand, or wire it into CI, before ever
+# regenerating/applying the cloud-custodian-ec2-ami-code or
+# cloud-custodian-ec2-ami-sitecustomize ConfigMaps in deploy/.
 #
 # Uses the exact same plain upstream image the CronJob uses (no custom
 # build), and mounts finops_c7n/ + sitecustomize.py at the exact same paths

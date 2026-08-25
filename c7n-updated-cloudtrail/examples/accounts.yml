@@ -1,7 +1,8 @@
 accounts:
-  - name: "pti-corebe-plint-002"
+  - name: "<ACCOUNT_NAME>"
     account_id: "<ACCOUNT_ID>"
-    role: arn:aws:iam::<ACCOUNT_ID>:role/pti-corebe-plint-002-cloud-custodian-ec2-ami-role
+    role: arn:aws:iam::<ACCOUNT_ID>:role/<CLUSTER_NAME>-cloud-custodian-ec2-ami-role
     regions:
-      - eu-west-1
-      - eu-central-1
+      - <REGION>
+      # add more regions here as needed - c7n-org fans out per region
+      # automatically, no code or extra IAM required (see README)
