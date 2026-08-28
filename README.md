@@ -38,3 +38,6 @@ Both variants depend on an external tagging process writing/removing the
 grace-period tags (`FinOpsStoppedDate`/`FinOpsUnattachedDate`) — see each
 variant's "Tag contract" section for the exact contract this automation
 assumes.
+
+Planning a rollout across many accounts? [LIMITS.md](LIMITS.md) covers where
+this generates AWS API load and which quotas are worth checking first.
